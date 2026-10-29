@@ -1,6 +1,9 @@
 import '../database/database_helper.dart';
+import '../models/activity_history_entry.dart';
+import '../models/recurring_task_template.dart';
 import '../models/task.dart';
 import '../services/notification_service.dart';
+import '../services/recurrence_service.dart';
 
 class TaskRepository {
   final DatabaseHelper _databaseHelper;
@@ -17,7 +20,8 @@ class TaskRepository {
   }
 
   Future<Map<String, int>> getTaskCountsForMonth(int year, int month) async {
-    final prefix = '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}';
+    final prefix =
+        '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}';
     return await _databaseHelper.getTaskCountsForMonthPrefix(prefix);
   }
 
@@ -28,6 +32,16 @@ class TaskRepository {
     if (insertedTask.reminderTime != null && !insertedTask.isCompleted) {
       await _notificationService.scheduleTaskReminder(insertedTask);
     }
+
+    await _databaseHelper.insertActivityHistory(
+      ActivityHistoryEntry(
+        eventType: 'task_created',
+        entityType: 'task',
+        entityId: id,
+        details: '${task.date}: ${task.title}',
+        timestamp: DateTime.now(),
+      ),
+    );
 
     return insertedTask;
   }
@@ -47,11 +61,32 @@ class TaskRepository {
       }
       await _notificationService.scheduleTaskReminder(task);
     }
+
+    await _databaseHelper.insertActivityHistory(
+      ActivityHistoryEntry(
+        eventType: 'task_updated',
+        entityType: 'task',
+        entityId: taskId,
+        details: '${task.date}: ${task.title}',
+        timestamp: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> deleteTask(int taskId) async {
+    final task = await _databaseHelper.getTaskById(taskId);
     await _databaseHelper.deleteTask(taskId);
     await _notificationService.cancelTaskReminder(taskId);
+
+    await _databaseHelper.insertActivityHistory(
+      ActivityHistoryEntry(
+        eventType: 'task_deleted',
+        entityType: 'task',
+        entityId: taskId,
+        details: task != null ? '${task.date}: ${task.title}' : null,
+        timestamp: DateTime.now(),
+      ),
+    );
   }
 
   Future<Task> toggleTaskCompleted(Task task) async {
@@ -73,6 +108,96 @@ class TaskRepository {
       }
     }
 
+    await _databaseHelper.insertActivityHistory(
+      ActivityHistoryEntry(
+        eventType: newStatus ? 'task_completed' : 'task_uncompleted',
+        entityType: 'task',
+        entityId: task.id,
+        details: '${task.date}: ${task.title}',
+        timestamp: DateTime.now(),
+      ),
+    );
+
     return updated;
+  }
+
+  Future<void> skipTask(Task task) async {
+    if (task.id == null) return;
+    final updated = task.copyWith(isSkipped: true);
+    await _databaseHelper.updateTask(updated);
+    await _notificationService.cancelTaskReminder(task.id!);
+
+    await _databaseHelper.insertActivityHistory(
+      ActivityHistoryEntry(
+        eventType: 'task_skipped',
+        entityType: 'task',
+        entityId: task.id,
+        details: '${task.date}: ${task.title}',
+        timestamp: DateTime.now(),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // RECURRING TEMPLATES
+  // ---------------------------------------------------------------------------
+
+  Future<List<RecurringTaskTemplate>> getAllTemplates() async {
+    return await _databaseHelper.getAllRecurringTemplates();
+  }
+
+  Future<RecurringTaskTemplate> addTemplate(
+      RecurringTaskTemplate template) async {
+    final id = await _databaseHelper.insertRecurringTemplate(template);
+    final inserted = template.copyWith(id: id);
+
+    await _databaseHelper.insertActivityHistory(
+      ActivityHistoryEntry(
+        eventType: 'template_created',
+        entityType: 'template',
+        entityId: id,
+        details: template.title,
+        timestamp: DateTime.now(),
+      ),
+    );
+
+    return inserted;
+  }
+
+  Future<void> updateTemplate(RecurringTaskTemplate template) async {
+    if (template.id == null) return;
+    await _databaseHelper.updateRecurringTemplate(template);
+
+    await _databaseHelper.insertActivityHistory(
+      ActivityHistoryEntry(
+        eventType: 'template_updated',
+        entityType: 'template',
+        entityId: template.id,
+        details: template.title,
+        timestamp: DateTime.now(),
+      ),
+    );
+  }
+
+  Future<void> deleteTemplate(int id) async {
+    await _databaseHelper.deleteRecurringTemplate(id);
+
+    await _databaseHelper.insertActivityHistory(
+      ActivityHistoryEntry(
+        eventType: 'template_deleted',
+        entityType: 'template',
+        entityId: id,
+        timestamp: DateTime.now(),
+      ),
+    );
+  }
+
+  Future<int> reconcileRecurringOccurrences({
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final db = await _databaseHelper.database;
+    final recurrenceService = RecurrenceService(db);
+    return await recurrenceService.generateOccurrences(from: from, to: to);
   }
 }

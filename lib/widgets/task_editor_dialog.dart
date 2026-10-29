@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
 import '../services/notification_service.dart';
+import '../services/time_range_parser.dart';
 import '../theme/app_theme.dart';
 
 class TaskEditorDialog extends StatefulWidget {
@@ -44,9 +45,13 @@ class TaskEditorDialog extends StatefulWidget {
 
 class _TaskEditorDialogState extends State<TaskEditorDialog> {
   late final TextEditingController _titleController;
+  late final TextEditingController _timeBlockController;
   late DateTime _selectedDate;
   TimeOfDay? _reminderTimeOfDay;
   bool _permissionDenied = false;
+
+  bool _hasTimeBlock = false;
+  String? _timeBlockError;
 
   @override
   void initState() {
@@ -60,18 +65,29 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
         _reminderTimeOfDay =
             TimeOfDay.fromDateTime(widget.existingTask!.reminderTime!);
       }
+      if (widget.existingTask!.hasTimeBlock) {
+        _hasTimeBlock = true;
+        _timeBlockController = TextEditingController(
+          text:
+              '${widget.existingTask!.timeBlockStart} - ${widget.existingTask!.timeBlockEnd}',
+        );
+      } else {
+        _timeBlockController = TextEditingController();
+      }
     } else {
       _selectedDate = DateTime(
         widget.initialDate.year,
         widget.initialDate.month,
         widget.initialDate.day,
       );
+      _timeBlockController = TextEditingController();
     }
   }
 
   @override
   void dispose() {
     _titleController.dispose();
+    _timeBlockController.dispose();
     super.dispose();
   }
 
@@ -90,7 +106,6 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
   }
 
   Future<void> _pickReminderTime() async {
-    // Only request permission when the user actually taps to set a reminder
     final granted = await NotificationService().requestPermissionIfNeeded();
     if (!mounted) return;
 
@@ -120,9 +135,38 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
     });
   }
 
+  void _validateTimeBlock() {
+    if (!_hasTimeBlock || _timeBlockController.text.trim().isEmpty) {
+      setState(() {
+        _timeBlockError = null;
+      });
+      return;
+    }
+
+    final parsed = TimeRangeParser.parse(_timeBlockController.text);
+    setState(() {
+      _timeBlockError = parsed.isValid ? null : parsed.errorMessage;
+    });
+  }
+
   void _handleSave() {
     final title = _titleController.text.trim();
     if (title.isEmpty) return;
+
+    String? blockStart;
+    String? blockEnd;
+
+    if (_hasTimeBlock && _timeBlockController.text.trim().isNotEmpty) {
+      final parsed = TimeRangeParser.parse(_timeBlockController.text);
+      if (!parsed.isValid) {
+        setState(() {
+          _timeBlockError = parsed.errorMessage;
+        });
+        return;
+      }
+      blockStart = parsed.startTime;
+      blockEnd = parsed.endTime;
+    }
 
     DateTime? fullReminderDateTime;
     if (_reminderTimeOfDay != null) {
@@ -144,6 +188,9 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
         date: dateKey,
         reminderTime: fullReminderDateTime,
         clearReminder: fullReminderDateTime == null,
+        timeBlockStart: blockStart,
+        timeBlockEnd: blockEnd,
+        clearTimeBlock: !_hasTimeBlock,
       );
     } else {
       task = Task(
@@ -151,6 +198,8 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
         date: dateKey,
         reminderTime: fullReminderDateTime,
         createdAt: DateTime.now(),
+        timeBlockStart: blockStart,
+        timeBlockEnd: blockEnd,
       );
     }
 
@@ -186,19 +235,18 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         border: Border.all(color: borderColor),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
       child: SafeArea(
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header handle
             Center(
               child: Container(
                 width: 36,
                 height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
+                margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
                   color: borderColor,
                   borderRadius: BorderRadius.circular(2),
@@ -213,120 +261,194 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                 color: primaryTextColor,
               ),
             ),
-            const SizedBox(height: 14),
-            // Title input
-            TextField(
-              controller: _titleController,
-              autofocus: true,
-              style: TextStyle(color: primaryTextColor, fontSize: 16),
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                hintText: 'What needs to be done?',
-              ),
-              onSubmitted: (_) => _handleSave(),
-            ),
-            const SizedBox(height: 12),
-            // Date row
-            InkWell(
-              onTap: _pickDate,
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: borderColor),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
+            const SizedBox(height: 10),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.calendar_today, size: 18, color: secondaryTextColor),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Date: $dateDisplay',
-                      style: TextStyle(color: primaryTextColor, fontSize: 14),
+                    TextField(
+                      controller: _titleController,
+                      autofocus: !isEditing,
+                      style: TextStyle(color: primaryTextColor, fontSize: 16),
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        hintText: 'What needs to be done?',
+                      ),
+                      onSubmitted: (_) => _handleSave(),
                     ),
-                    const Spacer(),
-                    Icon(Icons.arrow_drop_down, color: secondaryTextColor),
+                    const SizedBox(height: 10),
+                    InkWell(
+                      onTap: _pickDate,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: borderColor),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.calendar_today,
+                                size: 16, color: secondaryTextColor),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Date: $dateDisplay',
+                              style: TextStyle(
+                                  color: primaryTextColor, fontSize: 14),
+                            ),
+                            const Spacer(),
+                            Icon(Icons.arrow_drop_down,
+                                color: secondaryTextColor),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: borderColor),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.access_time,
+                                  size: 16, color: secondaryTextColor),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Time Block',
+                                style: TextStyle(
+                                    color: primaryTextColor, fontSize: 14),
+                              ),
+                              const Spacer(),
+                              Switch.adaptive(
+                                value: _hasTimeBlock,
+                                onChanged: (val) {
+                                  setState(() {
+                                    _hasTimeBlock = val;
+                                    if (val &&
+                                        _timeBlockController.text.trim().isEmpty) {
+                                      _timeBlockController.text = '11:00 - 11:30';
+                                    }
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                          if (_hasTimeBlock) ...[
+                            const SizedBox(height: 4),
+                            TextField(
+                              controller: _timeBlockController,
+                              style: TextStyle(
+                                  color: primaryTextColor, fontSize: 14),
+                              decoration: const InputDecoration(
+                                hintText: 'e.g. 11:00 - 11:30',
+                                isDense: true,
+                              ),
+                              onChanged: (_) => _validateTimeBlock(),
+                            ),
+                            if (_timeBlockError != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                _timeBlockError!,
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.red.shade600),
+                              ),
+                            ],
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: borderColor),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.alarm,
+                              size: 16, color: secondaryTextColor),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Reminder: ',
+                            style: TextStyle(
+                                color: primaryTextColor, fontSize: 14),
+                          ),
+                          const Spacer(),
+                          if (_reminderTimeOfDay == null)
+                            TextButton(
+                              onPressed: _pickReminderTime,
+                              style: TextButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 10),
+                                minimumSize: const Size(48, 36),
+                              ),
+                              child: Text(
+                                'Off / Set time',
+                                style: TextStyle(
+                                    color: secondaryTextColor, fontSize: 13),
+                              ),
+                            )
+                          else
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                InkWell(
+                                  onTap: _pickReminderTime,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 4),
+                                    child: Text(
+                                      _reminderTimeOfDay!.format(context),
+                                      style: TextStyle(
+                                        color: primaryTextColor,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 16),
+                                  tooltip: 'Remove reminder',
+                                  onPressed: _clearReminder,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (_permissionDenied) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Notification permission was denied. Task will save without reminder.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.amber.shade800,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-            // Reminder row
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border.all(color: borderColor),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.alarm, size: 18, color: secondaryTextColor),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Reminder: ',
-                    style: TextStyle(color: primaryTextColor, fontSize: 14),
-                  ),
-                  const Spacer(),
-                  if (_reminderTimeOfDay == null)
-                    TextButton(
-                      onPressed: _pickReminderTime,
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        minimumSize: const Size(48, 36),
-                      ),
-                      child: Text(
-                        'Off / Set time',
-                        style: TextStyle(color: secondaryTextColor, fontSize: 13),
-                      ),
-                    )
-                  else
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        InkWell(
-                          onTap: _pickReminderTime,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 4),
-                            child: Text(
-                              _reminderTimeOfDay!.format(context),
-                              style: TextStyle(
-                                color: primaryTextColor,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 16),
-                          tooltip: 'Remove reminder',
-                          onPressed: _clearReminder,
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 32,
-                            minHeight: 32,
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-            if (_permissionDenied) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Notification permission was denied. Task will save without reminder.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.amber.shade800,
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            // Action buttons
+            const SizedBox(height: 12),
             Row(
               children: [
                 if (isEditing && widget.onDelete != null)

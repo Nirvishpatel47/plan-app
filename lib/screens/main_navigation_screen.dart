@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../state/plan_scope.dart';
 import 'calendar_screen.dart';
+import 'time_screen.dart';
 import 'today_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   static const List<Widget> _screens = [
     TodayScreen(),
+    TimeScreen(),
     CalendarScreen(),
   ];
 
@@ -62,8 +64,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             label: 'Today',
           ),
           NavigationDestination(
-            icon: Icon(Icons.calendar_today_outlined),
-            selectedIcon: Icon(Icons.calendar_today),
+            icon: Icon(Icons.schedule_outlined),
+            selectedIcon: Icon(Icons.schedule),
+            label: 'Time',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month),
             label: 'Calendar',
           ),
         ],

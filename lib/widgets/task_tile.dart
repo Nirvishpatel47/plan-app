@@ -8,6 +8,8 @@ class TaskTile extends StatelessWidget {
   final ValueChanged<bool?> onToggle;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback? onLogToTime;
+  final VoidCallback? onSkip;
 
   const TaskTile({
     super.key,
@@ -15,6 +17,8 @@ class TaskTile extends StatelessWidget {
     required this.onToggle,
     required this.onEdit,
     required this.onDelete,
+    this.onLogToTime,
+    this.onSkip,
   });
 
   @override
@@ -63,14 +67,13 @@ class TaskTile extends StatelessWidget {
       },
       onDismissed: (_) => onDelete(),
       child: InkWell(
-        // Tapping the row ticks / toggles the task completion
         onTap: () => onToggle(!task.isCompleted),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Checkbox with generous touch target
+              // Checkbox
               SizedBox(
                 width: 32,
                 height: 32,
@@ -85,7 +88,7 @@ class TaskTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              // Title and optional reminder
+              // Title and metadata
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -105,35 +108,103 @@ class TaskTile extends StatelessWidget {
                         decorationColor: completedTextColor,
                       ),
                     ),
-                    if (task.reminderTime != null) ...[
-                      const SizedBox(height: 3),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.alarm,
-                            size: 13,
-                            color: task.isCompleted
-                                ? completedTextColor
-                                : secondaryTextColor,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            DateFormat.jm().format(task.reminderTime!),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: task.isCompleted
-                                  ? completedTextColor
-                                  : secondaryTextColor,
+                    const SizedBox(height: 3),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        // Scheduled time block badge
+                        if (task.hasTimeBlock)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? AppTheme.darkBorder
+                                  : AppTheme.lightBorder,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.schedule,
+                                    size: 11, color: secondaryTextColor),
+                                const SizedBox(width: 3),
+                                Text(
+                                  task.formattedTimeBlock!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: task.isCompleted
+                                        ? completedTextColor
+                                        : primaryTextColor,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    ],
+                        // Reminder time badge
+                        if (task.reminderTime != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.alarm,
+                                size: 12,
+                                color: task.isCompleted
+                                    ? completedTextColor
+                                    : secondaryTextColor,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                DateFormat.jm().format(task.reminderTime!),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: task.isCompleted
+                                      ? completedTextColor
+                                      : secondaryTextColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        // Recurring template indicator
+                        if (task.recurringTemplateId != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.repeat,
+                                size: 12,
+                                color: task.isCompleted
+                                    ? completedTextColor
+                                    : secondaryTextColor,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                'Habit',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: secondaryTextColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              // Dedicated edit button on the side
+              // Quick action: log to time tracking
+              if (onLogToTime != null)
+                IconButton(
+                  icon: const Icon(Icons.add_chart_outlined, size: 18),
+                  tooltip: 'Log to Time Tracker',
+                  color: secondaryTextColor,
+                  onPressed: onLogToTime,
+                  visualDensity: VisualDensity.compact,
+                ),
+              // Dedicated edit button
               IconButton(
                 icon: const Icon(Icons.edit_outlined, size: 20),
                 tooltip: 'Edit task',

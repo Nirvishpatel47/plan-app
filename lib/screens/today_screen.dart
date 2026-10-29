@@ -5,6 +5,7 @@ import '../state/plan_scope.dart';
 import '../theme/app_theme.dart';
 import '../widgets/task_editor_dialog.dart';
 import '../widgets/task_tile.dart';
+import 'settings_screen.dart';
 
 class TodayScreen extends StatelessWidget {
   const TodayScreen({super.key});
@@ -114,7 +115,7 @@ class TodayScreen extends StatelessWidget {
           children: [
             // Clean Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -142,11 +143,27 @@ class TodayScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  IconButton(
-                    onPressed: () => _openAddTask(context),
-                    tooltip: 'Add task',
-                    icon: const Icon(Icons.add, size: 28),
-                    color: primaryTextColor,
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => _openAddTask(context),
+                        tooltip: 'Add task',
+                        icon: const Icon(Icons.add, size: 28),
+                        color: primaryTextColor,
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const SettingsScreen(),
+                            ),
+                          );
+                        },
+                        tooltip: 'Settings',
+                        icon: const Icon(Icons.settings_outlined, size: 22),
+                        color: secondaryTextColor,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -198,6 +215,17 @@ class TodayScreen extends StatelessWidget {
                                       ),
                                     );
                                   }
+                                }
+                              },
+                              onLogToTime: () async {
+                                await notifier.logTaskToTimeEntry(task);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                          'Logged "${task.title}" to Time Tracker'),
+                                    ),
+                                  );
                                 }
                               },
                             );

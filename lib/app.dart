@@ -35,13 +35,18 @@ class _PlanAppState extends State<PlanApp> {
   Widget build(BuildContext context) {
     return PlanScope(
       notifier: _notifier,
-      child: MaterialApp(
-        title: 'Plan',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.system,
-        home: const MainNavigationScreen(),
+      child: ListenableBuilder(
+        listenable: _notifier,
+        builder: (context, _) {
+          return MaterialApp(
+            title: 'Plan',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
+            themeMode: _notifier.appSettings.themeMode,
+            home: const MainNavigationScreen(),
+          );
+        },
       ),
     );
   }
